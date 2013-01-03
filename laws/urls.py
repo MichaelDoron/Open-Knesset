@@ -12,6 +12,7 @@ bill_list_view = BillListView(queryset=Bill.objects.all().filter(law__merged_int
 bill_detail_view = BillDetailView.as_view()
 vote_list_view = VoteListView(queryset = Vote.objects.all(),paginate_by=20, extra_context={'votes':True,'title':ugettext('Votes')})
 vote_detail_view = VoteDetailView.as_view()
+vote_flyer_share_view = VoteFlyerDetailView.as_view()
 
 lawsurlpatterns = patterns ('',
     url(r'^bill/$', bill_list_view, name='bill-list'),
@@ -34,6 +35,8 @@ lawsurlpatterns = patterns ('',
     url(r'^vote/tag/(?P<tag>.*)/$', vote_tag, name='vote-tag'),
     url(r'^vote/(?P<pk>\d+)/$', vote_detail_view, name='vote-detail'),
     url(r'^vote/(?P<object_id>\d+)/$', vote_view, name='vote-detail'),
+    url(r'^vote/flyer_share/file/(?P<object_id>\d+)/$', vote_flyer_share_file_view, name='vote-flyer-file-detail'),
+    url(r'^vote/flyer_share/(?P<pk>\d+)/$', vote_flyer_share_view, name='vote-flyer-share'),
     # TODO:the next url is hardcoded in a js file
     url(r'^vote/auto_complete/$', vote_auto_complete, name='vote-auto-complete'),
 )

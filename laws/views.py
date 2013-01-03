@@ -29,6 +29,8 @@ from tagvotes.models import TagVote
 from hashnav import DetailView, ListView
 from agendas.models import Agenda,UserSuggestedVote
 from auxiliary.views import CsvView
+from auxiliary.picturfy import html2png
+import tempfile
 from forms import VoteSelectForm, BillSelectForm
 from models import *
 
@@ -613,3 +615,32 @@ def embed_bill_details(request, object_id):
 
     context = RequestContext (request,{'bill': bill})
     return render_to_response("laws/embed_bill_detail.html", context)
+
+
+def vote_flyer_share_view(request, object_id):
+    context = RequestContext (request,{})
+    v = Vote.objects.get(id=object_id)
+    context["vote"] = v
+    return render_to_response("laws/vote_flyer_share.html", context)
+
+class VoteFlyerDetailView(VoteDetailView):
+    def get_template_names(self):
+        return ["laws/vote_flyer_share.html"]
+
+
+
+
+def vote_flyer_share_file_view(request, object_id):
+    tmpFile=tempfile.mktemp(suffix=".png")
+    host = request.build_absolute_uri("/vote/flyer_share/" + object_id + "/")
+    url= host
+    print url
+    html2png(url,"500",tmpFile)
+    fsock = open(tmpFile,'rb')
+    response = HttpResponse(mimetype="image/png")
+    #response['Content-Disposition'] = 'filename=yay.png'
+    #response['Content-Length'] = os.path.getsize(path)
+    response.write(fsock.read())
+    fsock.close()
+    return response
+
