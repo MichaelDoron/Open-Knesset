@@ -1,6 +1,6 @@
 from itertools import chain
 from django.db import models
-from django.db.models import Sum, Q
+from django.db.models import Sum, Q, Count
 from django.utils.translation import ugettext_lazy as _
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
@@ -10,7 +10,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from actstream.models import Follow
 from laws.models import VoteAction, Vote
-from mks.models import Party, Member
+from mks.models import Party, Member, Knesset
 import queries
 
 AGENDAVOTE_SCORE_CHOICES = (
@@ -73,7 +73,7 @@ class AgendaMeeting(models.Model):
     def get_score_header(self):
         return _('Importance')
     def get_importance_header(self):
-        return None
+        return ''
 
     class Meta:
         unique_together = ('agenda', 'meeting')
@@ -289,6 +289,37 @@ class Agenda(models.Model):
         else:
             return 0.0
 
+    def candidate_list_score(self, candidate_list):
+        # Since we're already calculating python side, no need to do 2 queries
+        # with joins, select for and against, and calcualte the things
+        qs = AgendaVote.objects.filter(
+            agenda=self, vote__voteaction__member__in=candidate_list.member_ids,
+            vote__voteaction__type__in=['against', 'for']).extra(
+                select={'weighted_score': 'agendas_agendavote.score*agendas_agendavote.importance'}
+            ).values_list('weighted_score', 'vote__voteaction__type')
+
+        for_score = 0
+        against_score = 0
+
+        for score, action_type in qs:
+            if action_type == 'against':
+                against_score += score
+            else:
+                for_score += score
+
+        #max_score = sum([abs(x) for x in self.agendavotes.values_list('score', flat=True)]) * party.members.count()
+        # To save the queries, make sure to pass prefetch/select related
+        # Removed the values call, so that we can utilize the prefetched stuf
+        # This reduces the number of queries when called for example from
+        # AgendaResource.dehydrate
+        max_score = sum(abs(x.score * x.importance) for x in
+                        self.agendavotes.all()) * len(candidate_list.member_ids)
+
+        if max_score > 0:
+            return (for_score - against_score) / max_score * 100
+        else:
+            return 0.0
+
     def related_mk_votes(self,member):
         # Find all votes that
         #   1) This agenda is ascribed to
@@ -318,16 +349,71 @@ class Agenda(models.Model):
         instances['bottom'].sort(key=attrgetter('score'), reverse=True)
         return instances
 
-    def get_mks_values(self):
+    def get_mks_values(self, knesset_number=None):
+        """Return mks values.
+
+        :param knesset_number: The knesset numer of the mks. ``None`` will
+                               return current knesset (default: ``None``).
+        """
         mks_grade = Agenda.objects.get_mks_values()
-        return mks_grade.get(self.id,[])
 
-    def get_party_values(self):
+        if knesset_number is None:
+            knesset = Knesset.objects.current_knesset()
+        else:
+            knesset = Knesset.objects.get(pk=knesset_number)
+
+        mks_ids = Member.objects.filter(
+            current_party__knesset=knesset).values_list('pk', flat=True)
+
+        grades = mks_grade.get(self.id, [])
+        current_grades = [x for x in grades if x[0] in mks_ids]
+        return current_grades
+
+    def get_mks_totals(self, member):
+        "Get count for each vote type for a specific member on this agenda"
+
+        # let's split qs to make it more readable
+        qs = VoteAction.objects.filter(member=member, type__in=('for', 'against'), vote__agendavotes__agenda=self)
+        qs = list(qs.values('type').annotate(total=Count('id')))
+
+        totals = sum(x['total'] for x in qs)
+        qs.append({'type': 'no-vote', 'total': self.votes.count() - totals})
+
+        return qs
+
+    def get_party_values(self, knesset_number=None):
+        """Return party values.
+
+        :param knesset_number: The knesset numer of the parties. ``None`` will
+                               return current knesset (default: ``None``).
+        """
         party_grades = Agenda.objects.get_all_party_values()
-        return party_grades.get(self.id,[])
+        all_grades = party_grades.get(self.id, [])
 
-    def get_all_party_values(self):
-        return Agenda.objects.get_all_party_values()
+        if knesset_number is None:
+            knesset = Knesset.objects.current_knesset()
+        else:
+            knesset = Knesset.objects.get(pk=knesset_number)
+
+        current_parties_id = [x.pk for x in Party.objects.filter(knesset=knesset)]
+        current_grades = [x for x in all_grades if x[0] in current_parties_id]
+        return current_grades
+
+    def get_all_party_values(self, knesset_number=None):
+        if knesset_number is None:
+            knesset = Knesset.objects.current_knesset()
+        else:
+            knesset = Knesset.objects.get(pk=knesset_number)
+
+        current_parties_id = [x.pk for x in Party.objects.filter(knesset=knesset)]
+
+        current_parties_scores = {}
+
+        for agenda_id, parties_scores in Agenda.objects.get_all_party_values().iteritems():
+            current_parties_scores[agenda_id] = [
+                x for x in parties_scores if x[0] in current_parties_id]
+
+        return current_parties_scores
 
     def get_suggested_votes_by_agendas(self, num):
         votes = Vote.objects.filter(~Q(agendavotes__agenda=self))

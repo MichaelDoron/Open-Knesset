@@ -47,6 +47,7 @@ running this command event in case of no changes):
         `pip install -r Open-Knesset/requirements.txt`
 
 
+
 Run migrations and tests
 --------------------------------
 
@@ -60,6 +61,8 @@ group to see if that's something you should worry about.
 
 .. _oknesset-dev: https://groups.google.com/forum/#!forum/oknesset-dev
 
+
+See :ref:`devel_tips` for a few bash functions that may help.
 
 While Coding
 ==============
@@ -79,10 +82,10 @@ Adding a field to existing model
 We use South_ to manage database schema migrations. The work process is:
 
 - Add the field you want to model `SampleModel` in app `sample_app`
-- `bin/django schemamigration sample_app --auto` this generates a new migration
+- `python manage.py schemamigration sample_app --auto` this generates a new migration
   under sample_app/migrations. You should review it to make sure it does what
   you've expected.
-- `bin/django migrate` runs the migration against the database.
+- `python manage.py migrate` runs the migration against the database.
 - Don't forget to **git add** and **commit** the migration file.
 
 .. _South: http://south.aeracode.org/

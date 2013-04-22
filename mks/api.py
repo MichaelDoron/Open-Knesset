@@ -11,21 +11,23 @@ import tastypie.fields as fields
 from tagging.models import Tag
 from tagging.utils import calculate_cloud
 from apis.resources.base import BaseResource
-from models import Member, Party
+from models import Member, Party, Knesset
 from agendas.models import Agenda
 from video.utils import get_videos_queryset
 from video.api import VideoResource
 from links.models import Link
 from links.api import LinkResource
 
+from django.db.models import Count
 
 class PartyResource(BaseResource):
     ''' Party API
     TBD: create a party app
     '''
 
-    class Meta:
-        queryset = Party.objects.all()
+    class Meta(BaseResource.Meta):
+        queryset = Party.objects.filter(
+            knesset=Knesset.objects.current_knesset())
         allowed_methods = ['get']
         excludes = ['end_date', 'start_date']
         include_absolute_url = True
@@ -36,7 +38,7 @@ class DictStruct:
 
 class MemberBillsResource(BaseResource):
 
-    class Meta:
+    class Meta(BaseResource.Meta):
         allowed_methods = ['get']
         resource_name = "member-bills"
         # object_class= DictStruct
@@ -98,7 +100,7 @@ class MemberAgendasResource(BaseResource):
 
     agendas = fields.ListField()
 
-    class Meta:
+    class Meta(BaseResource.Meta):
         queryset = Member.objects.select_related('current_party').order_by()
         allowed_methods = ['get']
         fields = ['agendas']  # We're not really interested in any member details here
@@ -152,7 +154,8 @@ class MemberResource(BaseResource):
     ''' The Parliament Member API '''
     class Meta(BaseResource.Meta):
 
-        queryset = Member.objects.all().select_related('current_party')
+        queryset = Member.objects.exclude(
+            current_party__isnull=True).select_related('current_party')
 
         allowed_methods = ['get']
         ordering = [
@@ -162,22 +165,27 @@ class MemberResource(BaseResource):
             'bills_stats_pre',
             'bills_stats_first',
             'bills_stats_approved',
-            ]
+        ]
+
         filtering = dict(
-            name = ALL,
-            is_current = ALL,
-            )
+            name=ALL,
+            is_current=ALL,
+        )
+
         excludes = ['website', 'backlinks_enabled', 'area_of_residence']
-        list_fields = ['name', 'id', 'img_url']
+        list_fields = ['name', 'id', 'img_url', 'is_current']
         include_absolute_url = True
 
     party_name = fields.CharField()
     party_url = fields.CharField()
     mmms_count = fields.IntegerField(null=True)
     votes_count = fields.IntegerField(null=True)
-
-    videos = fields.ToManyField(VideoResource,
-                    attribute= lambda b: get_videos_queryset(b.obj),
+    video_about =  fields.ToManyField(VideoResource,
+                    attribute= lambda b: get_videos_queryset(b.obj,group='about'),
+                    null = True,
+                    full = True)
+    videos_related = fields.ToManyField(VideoResource,
+                    attribute= lambda b: get_videos_queryset(b.obj,group='related'),
                     null = True)
     links = fields.ToManyField(LinkResource,
                     attribute = lambda b: Link.objects.for_model(b.obj),
@@ -185,6 +193,11 @@ class MemberResource(BaseResource):
                     null = True)
     bills_uri = fields.CharField()
     agendas_uri = fields.CharField()
+    committees = fields.ListField()
+
+    def dehydrate_committees (self, bundle):
+        temp_list = bundle.obj.committee_meetings.values("committee", "committee__name").annotate(Count("id")).order_by('-id__count')[:5]
+        return (map(lambda item: (item['committee__name'], reverse('committee-detail', args=[item['committee']])), temp_list))
 
     def dehydrate_bills_uri(self, bundle):
         return '%s?%s' % (reverse('api_dispatch_list', kwargs={'resource_name': 'bill',
@@ -224,3 +237,20 @@ class MemberResource(BaseResource):
         return count
 
     fields.ToOneField(PartyResource, 'current_party', full=True)
+
+    def build_filters(self, filters=None):
+        if filters is None:
+            filters = {}
+
+        try:
+            knesset = int(filters.get('knesset', 0))
+        except KeyError:
+            knesset = 0
+
+        orm_filters = super(MemberResource, self).build_filters(filters)
+
+        if knesset:
+            knesset = Knesset.objects.get(number=knesset)
+            orm_filters['parties__knesset'] = knesset
+
+        return orm_filters
