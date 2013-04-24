@@ -715,9 +715,34 @@ def embed_bill_details(request, object_id):
 
     context = RequestContext (request,{'bill': bill})
     return render_to_response("laws/embed_bill_detail.html", context)
+
 class VoteFlyerDetailView(VoteDetailView):
     def get_template_names(self):
         return ["laws/vote_flyer.html"]
+
+    def get_context_data(self, *args, **kwargs):
+        context = super(VoteDetailView, self).get_context_data(*args, **kwargs)
+        vote = context['vote']
+        forParties = {}
+        againstParties = {}
+        for_votes = vote.for_votes().select_related('member','member__current_party')
+        against_votes = vote.against_votes().select_related('member','member__current_party')
+        for m in for_votes:
+            if m.member.current_party.name not in forParties.keys():
+                forParties[m.member.current_party.name] = []
+            forParties[m.member.current_party.name].append([m.member.name, m.member.img_url])
+        for m in against_votes:
+            if m.member.current_party.name not in againstParties.keys():
+                againstParties[m.member.current_party.name] = []
+            againstParties[m.member.current_party.name].append([m.member.name, m.member.img_url])
+        context['forParties'] = forParties
+        context['againstParties'] = againstParties
+        totalVotes = vote.for_votes_count + vote.against_votes_count
+        context['forPercent'] = (100*vote.for_votes_count) / totalVotes
+        context['againstPercent'] = (100*vote.against_votes_count) / totalVotes
+        context['title'] = vote.title
+        return context
+
 
 
 #TODO: this needs to be changed to use Amazon micro instance
