@@ -1,7 +1,6 @@
 <html>
 <head>
-{% load i18n %}
-{% load voting_tags %}
+
 
    
     <link href="http://twitter.github.com/bootstrap/assets/css/bootstrap-responsive.css" rel="stylesheet">
@@ -25,34 +24,8 @@ body {
 
 
 <div id="test" style="margin:0 0;boarder:1;width:641px;">
-	<table border=1 style="margin:0 0;boarder:1;width:641px;">
-	<tr><td colspan=2 align="right"><b></b>{{vote.title}}</b></td></tr>
-		<tr>
-			<th>
-				בעד
-			</th>
-			<th>
-				נגד
-			</th>
-		</tr>
-		<tr>
-			<td valign="top" align="right">
-			<font color="green">
-	                {% for m in for_votes %}
-	                    {{ m.member }} <img src="{{m.member.img_url}}" style="border:0; width:32px;"><br/>
-	                {% endfor %}
-	         </font>
-			</td>
-		<td valign="top" align="right">
-		<font color="red">
-	                {% for m in against_votes %}
-	                    {{ m.member }}<img src="{{m.member.img_url}}" style="border:0; width:32px;"><br/>
-	                {% endfor %}
-	    </font>
-		</td>
-		</tr>
-	
-	</table>
+burrrrrrrrr
+{{ token }}
 </div>
 </body>
 </html>
